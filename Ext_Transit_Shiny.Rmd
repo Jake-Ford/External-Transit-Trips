@@ -1,0 +1,166 @@
+---
+title: "Ext_Transit_Shiny"
+author: "Jacob Ford DCHC MPO"
+date: "1/26/2021"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+To develop the external transit tables for the MTP scenarios – 2030-40-50 – the script (“ExtTransitTrips.rsc”) developed by Joe Schirripa for automating the task is used. Previously the script was used to develop the 2045 external transit tables be Mei Ingram. 
+
+Using the script requires editing the **TRMv6_ExtTransit_Paremeters** excel worksheet. Developed by Mei using 2005 TOB data and 2013 SE ADT data (ADT, PctCV, AutoEE) this worksheet leads a step by step process to develop the two parameters needed in order to run the script. The worksheet is saved in the scenario/Input/Parameters during the execution of the script.  
+
+1.	First parameter is called “pctTransitAV”, with a tab of the same name. Mei calculated the 2013 version on the tab “Ref_TOB_2005_2013”, column J. Input comes from the SE file for ADT, PctCV, PctAutoEE, and the transit trip EI totals. Values are pasted into the aforementioned tab and read by script. 2016 calculation is found starting at J29 in “JF_pctTransitAV_2016” tab. 
+2.	Second parameter, “pctTransitMode” reads in the external transit matrix by trip type (Local/Express and PnR/KnR) and time (PK/OP). Mei’s calculation is shown in column AK in same “Ref_TOB_2005_2013” tab. 
+  +	For the 2016 creation, please reference the “JF_pctTransitMode_2016” tab, which shows the 2016 parameter creation. These are then pasted into the “pctTransitMode” tab. 
+3.	PK/OP_Trip# tabs – Input data from the 2013 external transit trip table by trip type, with the percentage share for each external TAZ’s destination by internal TAZ. No need to modify for this task.  
+
+
+Both parameters are calculated for the base year (2016) and is used to create future scenario external transit tables, i.e. 2030, 2040, 2050. Hence no need to create parameters other than for 2016. Note both parameters currently saved in the TRMv6_ExtTransit_Parameters are the updated 2016 values, not Mei’s original 2013 values. 
+
+Simply updating the EE_EI_IE 20xx matrix file being read in the script will result in the corresponding external transit table being produced.  See below for a snip of the script to create the 2050 external transit table.   
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(xlsx)
+library(readxl)
+library(plotly)
+library(sf)
+library(dplyr)
+library(tidygeocoder)
+library(leaflet)
+library(rgdal)
+library(readxl)
+library(sp)
+library(ggplot2)
+
+
+
+Ext_Transit_Trips <- read_excel("C:/Users/JacobFo/OneDrive - City of Durham/R Code/Ext_Transit_Trips.xlsx")
+
+trm_node <- readOGR(dsn="C:/Users/JacobFo/OneDrive - City of Durham/R Code", 
+                              layer="TRMv6_Node",GDAL1_integer64_policy=FALSE, verbose=FALSE )
+
+trm_line <- readOGR(dsn="C:/Users/JacobFo/OneDrive - City of Durham/R Code", 
+                    layer="TRMv6_Line",GDAL1_integer64_policy=FALSE, verbose=FALSE)
+
+Internal_Nodes <- read_excel("Internal_Nodes.xlsx", 
+    sheet = "total")
+Internal_Nodes_coord <- read_excel("Internal_Nodes_coord.xlsx")
+
+
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+list <- c(2861, 2876,2881,2897,2916,2923,2933,2935,2937,2944,2946,2951,2952)
+
+trm_node <-subset(trm_node, ID %in% list)
+
+```
+
+
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+#pal <- colorFactor(palette = c("blue", "red", "green"),
+ # levels=c("2050", "2045", "2016")#
+#)
+
+leaflet()%>%
+  addPolylines(data=trm_line, color="black", weight = 1, fill=FALSE,
+               popup = trm_line$ROADNAME)  %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(data=trm_node, 
+                   radius=trm_node$FIELD_3/10,
+                   popup=paste("External Station ", trm_node$ID1, "<br>", "External Transit in 2050: ", trm_node$FIELD_3, "<br>",
+                               "External Transit in 2045: ", trm_node$FIELD_2, "<br>",
+                               "External Transit in 2016: ", trm_node$FIELD_1)) %>%
+  addCircleMarkers(data=trm_node,  
+                  radius=trm_node$FIELD_2/17,
+                   color="red") %>%#,
+                  # popup=paste("External Station ", trm_node$ID1, "<br>", "External Transit in 2045: ", trm_node$FIELD_2)) %>%
+    addCircleMarkers(data=trm_node,  
+                   radius=trm_node$FIELD_1/25,
+                   color="green" ) %>%#,
+                   #popup=paste("External Station ", trm_node$ID1, "<br>", "External Transit in 2016: ", trm_node$FIELD_1)) %>%
+# addLegend("bottomright", pal=c("blue", "red", "green"), values=c(2050,2045,2016)) %>%
+    setView(lng=-78.93, lat=35.95,zoom= 9.25)
+
+
+  ##addCircles(data=ext_stations, label=ext_stations$ID1) #%>%
+  ##setView(lng=-78.93, lat=35.95,zoom= 9.25)
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+
+inputPanel (selectInput("id", "External Station: ",
+                c("2935"="2935",
+                  "2951"="2951",
+                  "2952"="2952"))
+    )
+
+i_nodes <- reactive ({
+  filter(Internal_Nodes_coord, ID1 == input$id)
+  })
+
+output$map <- renderLeaflet( {
+         
+       
+        leaflet() %>%
+            addPolylines(data=trm_line, color="black", weight = 1, fill=FALSE,
+                         popup = trm_line$ROADNAME) %>%
+            addProviderTiles(providers$CartoDB.Positron)%>%
+            addCircleMarkers(data=i_nodes(),  
+                             lng=coords.x1,
+                             lat=coords.x2,
+                             radius=trips_2016,
+                             popup=paste("External Station ", Internal_Nodes_coord$ID1, "<br>", "External Transit Trips: ", trips_2016))
+ })
+
+```
+
+
+
+
+
+
+```{r eruptions, eval=FALSE, include=FALSE}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+
+
